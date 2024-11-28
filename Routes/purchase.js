@@ -70,8 +70,8 @@ const updateProductStock = async (product1) => {
       }
 
       // Calculate the new total purchase stock
-      let existingStock = parseInt(productData.purchasestock, 10) || 0;
-      let newAmount = parseInt(element.quantity, 10);
+      let existingStock = parseInt(productData.purchasestock) || 0;
+      let newAmount = parseInt(element.quantity);
       let totalStock = existingStock + newAmount;
 
       // Determine new serial numbers with cost

@@ -105,7 +105,7 @@ Router.post("/addorders", middle, async (req, res) => {
     SalesAmount, Tax, orderdate, Paymentmode,
     Address, Pincode, State, status, MobNo, Dispatchbydate
   } = req.body;
-
+let productdata =[]
   try {
     // Validate required fields
     switch (true) {
@@ -136,8 +136,12 @@ Router.post("/addorders", middle, async (req, res) => {
       case !Dispatchbydate:
         return res.status(500).send({ error: "Dispatchbydate is Required" });
     }
-
- 
+    const saleData = await productmodule.findOne({ name: Product }).select("ordercome name");
+    productdata.push({ _id: saleData._id, name: saleData.name });
+    await productmodule.findOneAndUpdate(
+      { name: Product },
+      { ordercome: parseInt(saleData.ordercome) + parseInt(Quntity) }
+    );
      // Create the order with the calculated total cost
     const order = new ordermodule({
       Platform, productdata, Product, OrderId, Quntity, TransferPrice,
@@ -379,9 +383,9 @@ Router.put("/updateorder/:id",middle, async (req, res) => {
 
 //delete api
 Router.delete("/deleteorder/:id",middle, async (req, res) => {
-  const { orderId } = req.params;
+  const orderId  = req.params.id;
    try {
-    const order = await ordermodule.findById(id);
+    const order = await ordermodule.findById(orderId);
 
 
  
@@ -818,15 +822,17 @@ Router.put('/orderstatus/:id', async (req, res) => {
   const orderId = req.params.id;
   const productdata = req.body.productdata;
   const newinfo = req.body.status;
-console.log(orderId,productdata,newinfo)
-   
+    
       let order = await ordermodule.findById(orderId);
 
       if (!order) {
           return res.status(404).send("Order not found");
       }
 try {
-  
+
+
+
+
 
       let updateData = { status: newinfo };
 
@@ -877,7 +883,42 @@ try {
       }
 
 
-
+      if(newinfo === "neworder"){
+        if (order?.Product?.includes("+")) {
+      
+       
+          try {
+              const saleData = await combomodule.findOne({ name: order?.Product });
+      
+       
+              for (const element of saleData.products) {
+       
+                  // Fetch current sales data
+                  const productSaleData = await productmodule.findById(element ).select("ordercome");
+      
+                  if (productSaleData) {
+                      // Update the sales count
+                      await productmodule.findByIdAndUpdate(
+                           element ,
+                          { ordercome: parseInt(productSaleData.ordercome) + parseInt(order?.Quntity) }
+                      );
+                  } else {
+                   }
+              }
+          } catch (error) {
+              console.error("Error updating sales data", error);
+          }
+      }
+      else{
+      const saleData = await productmodule.findOne({name:order?.Product}).select("ordercome")
+       await productmodule.findOneAndUpdate(
+      {name:order?.Product} ,
+      {ordercome:  parseInt(saleData.ordercome) +  parseInt(order?.Quntity)},
+      );   
+      
+      }
+    }
+        
 
 
       if(newinfo === "shipped" ||newinfo == "Not Sent" || newinfo == "Cancel"){
@@ -918,6 +959,8 @@ try {
 
 
 
+ 
+
 
 
        if(newinfo === "Shipped"){
@@ -932,8 +975,7 @@ try {
         if (order?.Product?.includes("+")) {
      
             const saleData = await combomodule.findOne({ name: order?.Product });
-            console.log(saleData.products);
-         
+          
             for (const element of saleData.products) {
      
               // Fetch current sales data
@@ -1423,7 +1465,7 @@ if(order?.Product?.includes("+")){
               }
           }
       }
-
+// console.log(updateData,"check status")
       order = await ordermodule.findByIdAndUpdate(orderId, updateData, { new: true });
       res.json({ order });
 
