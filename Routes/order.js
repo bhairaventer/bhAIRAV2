@@ -168,6 +168,8 @@ Router.post('/addmultiorders', middle, async (req, res) => {
       return res.status(400).send({ error: "No orders provided" });
   }
 
+  console.log(orders)
+
        for (const orderData of orders) {
           const {
               
@@ -225,6 +227,8 @@ Router.post('/addmultiorders', middle, async (req, res) => {
  
                           // Fetch current sales data
                           const productSaleData = await productmodule.findById(element).select("ordercome name");
+
+                          console.log(productSaleData,"productdatasale ")
                           if (productSaleData) {
                               let productEntry = { _id: productSaleData._id, name: productSaleData.name };
                               productdata.push(productEntry);
@@ -250,6 +254,7 @@ Router.post('/addmultiorders', middle, async (req, res) => {
           } else {
             
                   const saleData = await productmodule.findOne({ name: Product }).select("ordercome name");
+                  console.log(saleData,"saledata")
                   if (saleData) {
                       productdata.push({ _id: saleData._id, name: saleData.name });
 
@@ -271,9 +276,9 @@ Router.post('/addmultiorders', middle, async (req, res) => {
 
           // Create and save the order
     
-          if (remainingQuantity > 0) {
-            return res.status(400).send({ error: "Not enough stock available to fulfill the order" });
-          }
+          // if (remainingQuantity > 0) {
+          //   return res.status(400).send({ error: "Not enough stock available to fulfill the order" });
+          // }
 
           
               const order = new ordermodule({
@@ -315,7 +320,9 @@ Router.post('/addmultiorders', middle, async (req, res) => {
                   State,
                   MobNo,
                   Dispatchbydate,
-                  status,totalCost, affectedPurchases
+                  status,
+                  affectedPurchases:[],
+                  totalCost:0,
               });
                const savedOrder = await order.save();
            
@@ -831,8 +838,191 @@ Router.put('/orderstatus/:id', async (req, res) => {
 try {
 
 
+  if (newinfo === "Not Sent" || newinfo === "Cancel") {
+    const order = await ordermodule.findById(orderId);
+    console.log("this is first yyyyy777777")
+console.log(order.status,"this is stya")
+    if (order.status !== "neworder" && order.status !== "Pending RTD" && order.status !== "Not Sent" && order.status !== "Cancel") {
+      console.log("this is first yyy66yy")
+if(order?.Product?.includes("+")){
+const order = await ordermodule.findById(orderId);
+
+const saleData = await combomodule.findOne({ name: order?.Product });
+
+for (const element of saleData.products) {
+  // Fetch current sales data
+  const productSaleData = await productmodule.findById({ _id: element }).select("totalsale");
+  if (productSaleData) {
+      // Update the sales count
+      await productmodule.findByIdAndUpdate(
+          { _id: element },
+          { totalsale: parseInt(productSaleData.totalsale) - parseInt(order?.Quntity) }
+      );
+  }
+  if (!order || !order.affectedPurchases) {
+    return { status: 404, message: "Order not found or no tracking details available" };
+}
+
+// Iterate through affected purchases to revert the sold quantities
+for (let detail of order.affectedPurchases) {
+    const purchase = await purchasemodule.findOne(
+        { _id: detail.purchaseId, "name.productid": detail.productid }
+    );
+
+    if (purchase) {
+        for (let item of purchase.name) {
+            if (item.productid.toString() === detail.productid.toString()) {
+                // Decrease the sold quantity by the quantity in affectedPurchases
+                item.soldQuantity -= detail.quantity;
+
+                // Update the purchase record in the database
+                await purchasemodule.updateOne(
+                    { _id: purchase._id, "name.productid": item.productid },
+                    { $set: { "name.$.soldQuantity": item.soldQuantity } }
+                );
+                break; // Exit loop after updating the relevant item
+            }
+        }
+    }
+}
+
+// Optionally, remove the affected purchases from the order after reverting the changes
+await ordermodule.updateOne(
+    { _id: orderId },
+    { $unset: { affectedPurchases: "" } }
+);
 
 
+
+}
+
+}else{
+
+
+
+// Assuming this function is triggered when an order is canceled
+
+// Fetch the order to get tracking details
+const order = await ordermodule.findById(orderId);
+
+if (!order || !order.affectedPurchases) {
+  return res.status(404).send({ error: "Order not found or no tracking details available" });
+}
+
+// Iterate through tracked purchases to revert the sold quantities
+for (let detail of order.affectedPurchases) {
+  const purchase = await purchasemodule.findOne(
+      { _id: detail.purchaseId, "name.productid": detail.productid }
+  );
+
+  if (purchase) {
+      for (let item of purchase.name) {
+          if (item.productid.toString() === detail.productid.toString()) {
+              // Revert the sold quantity
+              item.soldQuantity -= detail.quantity;
+
+              // Update the purchase record in the database
+              await purchasemodule.updateOne(
+                  { _id: purchase._id, "name.productid": item.productid },
+                  { $set: { "name.$.soldQuantity": item.soldQuantity } }
+              );
+              break;
+          }
+      }
+  }
+}
+
+// Optionally, remove the tracking details from the order
+await ordermodule.updateOne(
+  { _id: orderId },
+  { $unset: { affectedPurchases: "" } }
+);
+
+
+
+
+   
+      }
+
+
+
+
+
+          if (order?.Product?.includes("+")) {
+              try {
+                  const saleData = await combomodule.findOne({ name: order?.Product });
+
+                  for (const element of saleData.products) {
+                      // Fetch current sales data
+                      const productSaleData = await productmodule.findById({ _id: element }).select("totalsale");
+                      if (productSaleData) {
+                          // Update the sales count
+                          await productmodule.findByIdAndUpdate(
+                              { _id: element },
+                              { totalsale: parseInt(productSaleData.totalsale) - parseInt(order?.Quntity) }
+                          );
+                      }
+
+                  }
+              } catch (error) {
+                  console.error("Error updating sales data", error);
+              }
+          } else {
+              const saleData = await productmodule.findOne({ name: order?.Product }).select("totalsale");
+              await productmodule.findOneAndUpdate(
+                  { name: order?.Product },
+                  { totalsale: parseInt(saleData.totalsale) - parseInt(order?.Quntity) }
+              );
+          }
+
+          if (order.Productserial) {
+              const convertNestedObject = (nestedArray) => {
+                  const result = [];
+                  nestedArray.forEach(obj => {
+                      for (const [key, value] of Object.entries(obj)) {
+                          result.push({
+                              _id: key,
+                              items: value
+                          });
+                      }
+                  });
+                  return result;
+              };
+
+              const convertedArray = convertNestedObject(order.Productserial);
+              for (const element of convertedArray) {
+                  const productSaleData = await productmodule.findById(element._id).select("serialNumbers");
+
+                  if (!productSaleData) {
+                      console.error(`Product with ID ${element._id} not found.`);
+                      continue;
+                  }
+
+                  const existingSerialNumbers = productSaleData.serialNumbers || [];
+                  const elementsToAdd = element.items;
+
+                  const serialNumbersMap = new Map();
+
+                  existingSerialNumbers.forEach(serialObj => {
+                      serialNumbersMap.set(serialObj.serial, serialObj);
+                  });
+
+                  elementsToAdd.forEach(newSerialObj => {
+                      serialNumbersMap.set(newSerialObj.serial, newSerialObj);
+                  });
+
+                  const updatedSerialNumbers = Array.from(serialNumbersMap.values());
+
+                  await productmodule.findByIdAndUpdate(
+                      element._id,
+                      { serialNumbers: updatedSerialNumbers },
+                      { new: true }
+                  );
+              }
+          }
+      }
+  }
+ 
 
       let updateData = { status: newinfo };
 
@@ -923,13 +1113,14 @@ try {
 
       if(newinfo === "shipped" ||newinfo == "Not Sent" || newinfo == "Cancel"){
         if (order?.Product?.includes("+")) {
-      
+   
        
           try {
               const saleData = await combomodule.findOne({ name: order?.Product });
-      
-       
-              for (const element of saleData.products) {
+              if(order.status.toLowerCase() == "neworder" || order.status.toLowerCase() =="pending rtd" || order.status.toLowerCase() == "rtd"){
+
+            console.log("this is first")
+               for (const element of saleData.products) {
        
                   // Fetch current sales data
                   const productSaleData = await productmodule.findById(element ).select("ordercome");
@@ -942,12 +1133,15 @@ try {
                       );
                   } else {
                    }
-              }
+              }  }
           } catch (error) {
               console.error("Error updating sales data", error);
           }
       }
       else{
+       
+        
+        if(order.status.toLowerCase() == "neworder" || order.status.toLowerCase() =="pending rtd" || order.status.toLowerCase() == "rtd"){
       const saleData = await productmodule.findOne({name:order?.Product}).select("ordercome")
        await productmodule.findOneAndUpdate(
       {name:order?.Product} ,
@@ -956,17 +1150,18 @@ try {
       
       }
        }
+       }
 
 
 
  
 
-
+ 
 
        if(newinfo === "Shipped"){
 
 
-
+console.log("shipped wala ")
 
         let productdata = [];
         let totalCost = 0;
@@ -984,11 +1179,11 @@ try {
               if (productSaleData) {
                 let productEntry = { _id: productSaleData._id, name: productSaleData.name };
                 productdata.push(productEntry);
-    
+                console.log("this is also runngin.........")
                 // Update the sales count
                 await productmodule.findByIdAndUpdate(
                   element,
-                  { ordercome: parseInt(productSaleData.ordercome) + parseInt(order?.Quntity) }
+                  { ordercome: parseInt(productSaleData.ordercome) - parseInt(order?.Quntity) }
                 );
     
                 // Initialize total cost
@@ -1052,12 +1247,13 @@ try {
             }
           
         } else {
+          console.log("this is also runngin.......")
           const saleData = await productmodule.findOne({ name: order?.Product }).select("ordercome name");
           productdata.push({ _id: saleData._id, name: saleData.name });
     
           await productmodule.findOneAndUpdate(
             { name: order?.Product },
-            { ordercome: parseInt(saleData.ordercome) + parseInt(order?.Quntity) }
+            { ordercome: parseInt(saleData.ordercome) - parseInt(order?.Quntity) }
           );
     
           // Initialize total cost
@@ -1246,225 +1442,44 @@ if(newinfo === "RTD"){
 
 
 
-  if(newinfo === "shipped" ||newinfo == "Not Sent" || newinfo == "Cancel"){
-  if (order?.Product?.includes("+")) {
+//   if(newinfo === "shipped" ||newinfo == "Not Sent" || newinfo == "Cancel"){
+//   if (order?.Product?.includes("+")) {
 
  
-    try {
-        const saleData = await combomodule.findOne({ name: order?.Product });
+//     try {
+//         const saleData = await combomodule.findOne({ name: order?.Product });
 
  
-        for (const element of saleData.products) {
+//         for (const element of saleData.products) {
  
-            // Fetch current sales data
-            const productSaleData = await productmodule.findById(element ).select("ordercome");
+//             // Fetch current sales data
+//             const productSaleData = await productmodule.findById(element ).select("ordercome");
 
-            if (productSaleData) {
-                // Update the sales count
-                await productmodule.findByIdAndUpdate(
-                     element ,
-                    { ordercome: parseInt(productSaleData.ordercome) - parseInt(order?.Quntity) }
-                );
-            } else {
-             }
-        }
-    } catch (error) {
-        console.error("Error updating sales data", error);
-    }
-}
-else{
-const saleData = await productmodule.findOne({name:order?.Product}).select("ordercome")
- await productmodule.findOneAndUpdate(
-{name:order?.Product} ,
-{ordercome:  parseInt(saleData.ordercome) -  parseInt(order?.Quntity)},
-);   
+//             if (productSaleData) {
+//                 // Update the sales count
+//                 await productmodule.findByIdAndUpdate(
+//                      element ,
+//                     { ordercome: parseInt(productSaleData.ordercome) - parseInt(order?.Quntity) }
+//                 );
+//             } else {
+//              }
+//         }
+//     } catch (error) {
+//         console.error("Error updating sales data", error);
+//     }
+// }
+// else{
+// const saleData = await productmodule.findOne({name:order?.Product}).select("ordercome")
+//  await productmodule.findOneAndUpdate(
+// {name:order?.Product} ,
+// {ordercome:  parseInt(saleData.ordercome) -  parseInt(order?.Quntity)},
+// );   
 
-}
- }
-
-
-      if (newinfo === "Not Sent" || newinfo === "Cancel") {
+// }
+//  }
 
 
-        if (order.status !== "neworder" && order.status !== "Pending RTD") {
-if(order?.Product?.includes("+")){
-  const order = await ordermodule.findById(orderId);
-
-  const saleData = await combomodule.findOne({ name: order?.Product });
-
-  for (const element of saleData.products) {
-      // Fetch current sales data
-      const productSaleData = await productmodule.findById({ _id: element }).select("totalsale");
-      if (productSaleData) {
-          // Update the sales count
-          await productmodule.findByIdAndUpdate(
-              { _id: element },
-              { totalsale: parseInt(productSaleData.totalsale) - parseInt(order?.Quntity) }
-          );
-      }
-      if (!order || !order.affectedPurchases) {
-        return { status: 404, message: "Order not found or no tracking details available" };
-    }
-
-    // Iterate through affected purchases to revert the sold quantities
-    for (let detail of order.affectedPurchases) {
-        const purchase = await purchasemodule.findOne(
-            { _id: detail.purchaseId, "name.productid": detail.productid }
-        );
-
-        if (purchase) {
-            for (let item of purchase.name) {
-                if (item.productid.toString() === detail.productid.toString()) {
-                    // Decrease the sold quantity by the quantity in affectedPurchases
-                    item.soldQuantity -= detail.quantity;
-
-                    // Update the purchase record in the database
-                    await purchasemodule.updateOne(
-                        { _id: purchase._id, "name.productid": item.productid },
-                        { $set: { "name.$.soldQuantity": item.soldQuantity } }
-                    );
-                    break; // Exit loop after updating the relevant item
-                }
-            }
-        }
-    }
-
-    // Optionally, remove the affected purchases from the order after reverting the changes
-    await ordermodule.updateOne(
-        { _id: orderId },
-        { $unset: { affectedPurchases: "" } }
-    );
-
- 
- 
-}
-
-}else{
-
-
-
-  // Assuming this function is triggered when an order is canceled
- 
-  // Fetch the order to get tracking details
-  const order = await ordermodule.findById(orderId);
-
-  if (!order || !order.affectedPurchases) {
-      return res.status(404).send({ error: "Order not found or no tracking details available" });
-  }
-
-  // Iterate through tracked purchases to revert the sold quantities
-  for (let detail of order.affectedPurchases) {
-      const purchase = await purchasemodule.findOne(
-          { _id: detail.purchaseId, "name.productid": detail.productid }
-      );
-
-      if (purchase) {
-          for (let item of purchase.name) {
-              if (item.productid.toString() === detail.productid.toString()) {
-                  // Revert the sold quantity
-                  item.soldQuantity -= detail.quantity;
-
-                  // Update the purchase record in the database
-                  await purchasemodule.updateOne(
-                      { _id: purchase._id, "name.productid": item.productid },
-                      { $set: { "name.$.soldQuantity": item.soldQuantity } }
-                  );
-                  break;
-              }
-          }
-      }
-  }
-
-  // Optionally, remove the tracking details from the order
-  await ordermodule.updateOne(
-      { _id: orderId },
-      { $unset: { affectedPurchases: "" } }
-  );
-
-
- 
-
-       
-          }
-
-
-
-
-
-              if (order?.Product?.includes("+")) {
-                  try {
-                      const saleData = await combomodule.findOne({ name: order?.Product });
-
-                      for (const element of saleData.products) {
-                          // Fetch current sales data
-                          const productSaleData = await productmodule.findById({ _id: element }).select("totalsale");
-                          if (productSaleData) {
-                              // Update the sales count
-                              await productmodule.findByIdAndUpdate(
-                                  { _id: element },
-                                  { totalsale: parseInt(productSaleData.totalsale) - parseInt(order?.Quntity) }
-                              );
-                          }
-
-                      }
-                  } catch (error) {
-                      console.error("Error updating sales data", error);
-                  }
-              } else {
-                  const saleData = await productmodule.findOne({ name: order?.Product }).select("totalsale");
-                  await productmodule.findOneAndUpdate(
-                      { name: order?.Product },
-                      { totalsale: parseInt(saleData.totalsale) - parseInt(order?.Quntity) }
-                  );
-              }
-
-              if (order.Productserial) {
-                  const convertNestedObject = (nestedArray) => {
-                      const result = [];
-                      nestedArray.forEach(obj => {
-                          for (const [key, value] of Object.entries(obj)) {
-                              result.push({
-                                  _id: key,
-                                  items: value
-                              });
-                          }
-                      });
-                      return result;
-                  };
-
-                  const convertedArray = convertNestedObject(order.Productserial);
-                  for (const element of convertedArray) {
-                      const productSaleData = await productmodule.findById(element._id).select("serialNumbers");
-
-                      if (!productSaleData) {
-                          console.error(`Product with ID ${element._id} not found.`);
-                          continue;
-                      }
-
-                      const existingSerialNumbers = productSaleData.serialNumbers || [];
-                      const elementsToAdd = element.items;
-
-                      const serialNumbersMap = new Map();
-
-                      existingSerialNumbers.forEach(serialObj => {
-                          serialNumbersMap.set(serialObj.serial, serialObj);
-                      });
-
-                      elementsToAdd.forEach(newSerialObj => {
-                          serialNumbersMap.set(newSerialObj.serial, newSerialObj);
-                      });
-
-                      const updatedSerialNumbers = Array.from(serialNumbersMap.values());
-
-                      await productmodule.findByIdAndUpdate(
-                          element._id,
-                          { serialNumbers: updatedSerialNumbers },
-                          { new: true }
-                      );
-                  }
-              }
-          }
-      }
+    
 // console.log(updateData,"check status")
       order = await ordermodule.findByIdAndUpdate(orderId, updateData, { new: true });
       res.json({ order });
@@ -1539,7 +1554,7 @@ Router.get('/trackingid/:trackingnumber', middle, async (req, res) => {
           if (!product) {
               return res.json({ error: "Product not found", success: false });
           }
-
+console.log(product)
           // Filter out invalid serial numbers
           const validSerialNumbers = product.serialNumbers.filter(
               item => item.serial && !isNaN(item.cost)

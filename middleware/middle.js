@@ -1,17 +1,10 @@
 let jwt = require('jsonwebtoken')
 require('dotenv').config();
-
+ 
 const jwtsecret = process.env.jwtsecret 
-
 let User = require('../module/user')
 
- 
 
-
-
- 
-
- 
  
 const Fetchuser = async (req, res, next) => {
     const token = req.header('authtoken')// Extract token from 'Authorization' header
